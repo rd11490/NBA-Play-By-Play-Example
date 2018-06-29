@@ -35,6 +35,7 @@ https://stats.nba.com/stats/boxscoreadvancedv2/?gameId=0041700404&startPeriod=0&
 
 From this call we can see that the players on the court at the start of
 Q2 in game 4 of the 2018 NBA Finals were:
+
 GSW
 1. Draymond Green
 2. Klay Thompson
