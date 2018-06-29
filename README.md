@@ -17,7 +17,7 @@ https://stats.nba.com/stats/boxscoreadvancedv2/?gameId=0041700404&startPeriod=0&
 ```
 
 
-In order to use this method you need to provide set 4 parameters to non-default values:
+In order to use this method you need to set 4 parameters to non-default values:
 1. gameId: The id of the game you want
 2. startRange: approximately half a second before the first event of a
 period in 10ths of a second (if the first event takes place at 11:43 left
