@@ -96,7 +96,7 @@ http = urllib3.PoolManager()
 
 
 Function for downloading and extracting the data from a stats.nba endpoint into a dataframe
-Note: `results = resp['resultSets'][0]` only works because in all cases I only need the first item in the resultsSet
+note: `results = resp['resultSets'][0]` only works because in all cases I only need the first item in the resultsSet
 ```
 def extract_data(url):
     r = http.request('GET', url, headers=header_data)
@@ -144,6 +144,7 @@ periods_and_time = periods_and_time[periods_and_time['PERIOD'] > 1]
 ```
 
 Grab the period and time of second event in each period(the first event is always the Start of Period event
+note: I know there are better ways to do this such as filtering start of period events, but this was the first I thought of.
 ```
 times = periods_and_time.groupby(by='PERIOD').head(2).groupby(by='PERIOD').tail(1)[['PERIOD', 'TIME']].values
 ```
