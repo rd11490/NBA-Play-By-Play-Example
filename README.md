@@ -7,7 +7,7 @@
 The NBA indirectly provides the players on the court at the start of a
 period through the advancedboxscorev2 endpoint. It does this by allowing
 the caller to specify a start time and end time between which stats are
-calculated. By doing this, we can determine only the players who are on the
+calculated. From this information we can determine only the players who are on the
 the court during a given period.
 
 Example GET call:
@@ -57,11 +57,11 @@ CLE
 
 #### Getting the subsitutions in a period
 Once we have a list of all of the players who were on the court in a
-given period we can take all of the substitutions during that period,
-to determine who started the period on the court. We do this by taking
+given period we can use all of the substitution events during that period
+to determine who started the period on the court. First we take
 all of the substitution events for each player during the period (SUB IN vs SUB OUT)
-and then determining which event was first for the player. We then take all of
-the players whose first event was to be SUBBED IN and filter those out of the list
+and then find out which of the two was the first substitution event for the player. We then take all of
+the players whose first event was SUBBED IN and filter those out of the list
 of players who played in the period. We are then left with the players
 who started the period.
 
@@ -154,7 +154,7 @@ def extract_data(url):
     return frame
 ```
 
-Function for determining the start time of each period
+Function for calculating the start time of each period
 ```
 def calculate_time_at_period(period):
     if period > 5:
