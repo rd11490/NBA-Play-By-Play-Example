@@ -74,6 +74,24 @@ https://stats.nba.com/stats/playbyplayv2/?gameId=0041700404&&startPeriod=0&endPe
 The field `EVENTMSGTYPE` can be used to determine which event type each row
 corresponds to. Substitutions are `EVENTMSGTYPE = 8`
 
+By determining which player's first substitution event is to be subbed
+into the game and filtering those players from the above list, we are
+left with only the starters:
+
+GSW
+1. Draymond Green
+2. Klay Thompson
+3. Stephen Curry
+4. Shaun Livingston
+5. David West
+
+CLE
+1. LeBron James
+2. Rodney Hood
+3. Jeff Green
+4. Kyle Korver
+5. Larry Nance Jr.
+
 #### Example
 
 [Example Code](scrape_example.py)
