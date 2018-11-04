@@ -175,7 +175,7 @@ def split_subs(df, tag):
 
 Given a game_id download and extract the play by play data
 ```
-game_id = "0041700404&"
+game_id = "0041700404"
 frame = extract_data(play_by_play_url(game_id))
 ```
 

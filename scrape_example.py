@@ -56,7 +56,7 @@ def split_subs(df, tag):
     subs.columns = ['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']
     return subs
 
-game_id = "0041700404&"
+game_id = "0041700404"
 frame = extract_data(play_by_play_url(game_id))
 
 substitutionsOnly = frame[frame["EVENTMSGTYPE"] == 8][['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
