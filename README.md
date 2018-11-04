@@ -1,15 +1,14 @@
 ## Getting the players at the start of a period:
 
-#### Using the stats.nba API
+### Using the stats.nba API
+
+#### Getting the players who played in a period
 
 The NBA indirectly provides the players on the court at the start of a
 period through the advancedboxscorev2 endpoint. It does this by allowing
 the caller to specify a start time and end time between which stats are
-calculated. Because a player on the bench accumulates no stats
-(in most cases) you can limit the range to only contain the first event
-of a period and therefore only get the players on the court at the
-start of the period. By leveraging this we can remove much of the
-difficulty in determining who is on the court at a given time.
+calculated. By doing this, we can determine only the players who are on the
+the court during a given period.
 
 Example GET call:
 ```
@@ -19,21 +18,17 @@ https://stats.nba.com/stats/boxscoreadvancedv2/?gameId=0041700404&startPeriod=0&
 
 In order to use this method you need to set 4 parameters to non-default values:
 1. gameId: The id of the game you want
-2. startRange: approximately half a second before the first event of a
-period in 10ths of a second (if the first event takes place at 11:43 left
-in Q2, then the startRange should be `7200 + 170 - 5 = 7365`
-3. startRange: approximately half a second after the first event of a
-period in 10ths of a second (if the first event takes place at 11:43 left
-in Q2, then the startRange should be `7200 + 170 + 5 = 7375`
+2. startRange: half a second past the start of the period. (if you are processing Q2, then the startRange should be `7200 +5 = 7205`
+3. startRange: half a second before the end of the period. (if you are processing Q2, then the startRange should be `14400 - 5 = 14395`
 4. rangeType: should always be 2
 
 
 Example call:
 ```
-https://stats.nba.com/stats/boxscoreadvancedv2/?gameId=0041700404&startPeriod=0&endPeriod=14&startRange=7300&endRange=7400&rangeType=2
+https://stats.nba.com/stats/boxscoreadvancedv2/?gameId=0041700404&startPeriod=0&endPeriod=14&startRange=7205&endRange=14395&rangeType=2
 ```
 
-From this call we can see that the players on the court at the start of
+From this call we can see that all of the players that played in
 Q2 in game 4 of the 2018 NBA Finals were:
 
 GSW
@@ -42,6 +37,11 @@ GSW
 3. Stephen Curry
 4. Shaun Livingston
 5. David West
+6. Kevin Durant
+7. JaVale McGee
+8. Andre Iguodala
+9. Jordan Bell
+10. Nick Young
 
 CLE
 1. LeBron James
@@ -49,7 +49,30 @@ CLE
 3. Jeff Green
 4. Kyle Korver
 5. Larry Nance Jr.
+6. Kevin Love"
+7. Tristan Thompson
+8. JR Smith
+9. George Hill
 
+
+#### Getting the subsitutions in a period
+Once we have a list of all of the players who were on the court in a
+given period we can take all of the substitutions during that period,
+to determine who started the period on the court. We do this by taking
+all of the substitution events for each player during the period (SUB IN vs SUB OUT)
+and then determining which event was first for the player. We then take all of
+the players whose first event was to be SUBBED IN and filter those out of the list
+of players who played in the period. We are then left with the players
+who started the period.
+
+
+Example call:
+```
+https://stats.nba.com/stats/playbyplayv2/?gameId=0041700404&&startPeriod=0&endPeriod=14
+```
+
+The field `EVENTMSGTYPE` can be used to determine which event type each row
+corresponds to. Substitutions are `EVENTMSGTYPE = 8`
 
 #### Example
 
@@ -57,11 +80,14 @@ CLE
 
 Using Python 3.6
 
-imports
+imports and settings
 ```
+import json
 import pandas as pd
 import urllib3
-import json
+
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
 ```
 
 Set the following headers for the API calls
@@ -110,62 +136,90 @@ def extract_data(url):
     return frame
 ```
 
-Function for converting the string time left in the period into total seconds elapsed
+Function for determining the start time of each period
 ```
-def convert_time_string_to_seconds(row):
-    time_string = row['PCTIMESTRING']
-    period = int(row['PERIOD'])
-    if period > 4:
-        add = 720 * 4 + (period - 4) * (5 * 60)
+def calculate_time_at_period(period):
+    if period > 5:
+        return (720 * 4 + (period - 5) * (5 * 60)) * 10
     else:
-        add = 720 * (period - 1)
-
-    [min, sec] = time_string.split(":")
-
-    min_elapsed = 11 - int(min)
-    sec_elapsed = 60 - int(sec)
-
-    row["TIME"] = (add + (min_elapsed * 60) + sec_elapsed) * 10
-    return row
+        return (720 * (period - 1)) * 10
 
 ```
 
-Given a game_id download and extract the period and time from the play by play
+Helper Function for splitting SUB IN and SUB OUT players for processing
 ```
-game_id = "0041700404"
+def split_subs(df, tag):
+    subs = df[[tag, 'PERIOD', 'EVENTNUM']]
+    subs['SUB'] = tag
+    subs.columns = ['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']
+    return subs
+```
+
+Given a game_id download and extract the play by play data
+```
+game_id = "0041700404&"
 frame = extract_data(play_by_play_url(game_id))
-
-periods_and_time = frame[['PERIOD', 'PCTIMESTRING']]
-periods_and_time = periods_and_time.apply(convert_time_string_to_seconds, axis=1)
 ```
 
-Filter out the first period (we know the starters)
+Filter the play by play to only include the substitutions
 ```
-periods_and_time = periods_and_time[periods_and_time['PERIOD'] > 1]
-```
-
-Grab the period and time of second event in each period(the first event is always the Start of Period event
-note: I know there are better ways to do this such as filtering start of period events, but this was the first I thought of.
-```
-times = periods_and_time.groupby(by='PERIOD').head(2).groupby(by='PERIOD').tail(1)[['PERIOD', 'TIME']].values
+substitutionsOnly = frame[frame["EVENTMSGTYPE"] == 8][['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
+substitutionsOnly.columns = ['PERIOD', 'EVENTNUM', 'OUT', 'IN']
 ```
 
+Split the frame into subs in and subs out with label
+```
+subs_in = split_subs(substitutionsOnly, 'IN')
+subs_out = split_subs(substitutionsOnly, 'OUT')
+```
 
-Given the period and time elapsed at the first event, extract the player
-id and player name from each player on the court during that event.
+Merge the two frames together
+```
+full_subs = pd.concat([subs_out, subs_in], axis=0).reset_index()[['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']]
+```
+
+Group by the player and period then take the first substitution event for each player in each period
+```
+first_event_of_period = full_subs.loc[full_subs.groupby(by=['PERIOD', 'PLAYER_ID'])['EVENTNUM'].idxmin()]
+```
+
+Filter so that only the players whose first event was to be subbed into the game are in the dataframe
+```
+players_subbed_in_at_each_period = first_event_of_period[first_event_of_period['SUB'] == 'IN'][['PLAYER_ID', 'PERIOD', 'SUB']]
+```
+
+Get a list of each period in the game
+```
+periods = players_subbed_in_at_each_period['PERIOD'].drop_duplicates().values.tolist()
+```
+
+
+Calculate the start and end time of the period (offset by .5 seconds so that there
+is no collision at the start/end barrier between periods). Then download
+the boxscore for that time range, extract the player name, id, and team.
+Join the boxscore with the substitution frame from above and filter out any
+rows where the join was successful
+(Any player who was subbed in will have SUB as `IN`.
+Any player who started will have SUB as `NAN`)
+
 ```
 frames = []
-for t in times:
-    period = t[0]
-    time = t[1]
-    lower = time - 9
-    upper = time + 9
-    frame = extract_data(advanced_boxscore_url(game_id, lower, upper))[['PLAYER_ID', 'PLAYER_NAME']]
-    frame['PERIOD'] = period
-    frames.append(frame)
+for period in periods:
 
-players_on_court = pd.concat(frames)
-print(players_on_court)
+    low = calculate_time_at_period(period) + 5
+    high = calculate_time_at_period(period + 1) - 5
+    boxscore = advanced_boxscore_url(game_id, low, high)
+    boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ABBREVIATION']]
+    boxscore_players['PERIOD'] = period
+
+    players_subbed_in_at_period = players_subbed_in_at_each_period[players_subbed_in_at_each_period['PERIOD'] == period]
+
+    joined_players = pd.merge(boxscore_players, players_subbed_in_at_period, on=['PLAYER_ID', 'PERIOD'], how='left')
+    joined_players = joined_players[pd.isnull(joined_players['SUB'])][['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ABBREVIATION', 'PERIOD']]
+    frames.append(joined_players)
+
+out = pd.concat(frames)
+print(out)
 ```
 
 

@@ -3,6 +3,9 @@ import json
 import pandas as pd
 import urllib3
 
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
+
 header_data = {
     'Host': 'stats.nba.com',
     'Connection': 'keep-alive',
@@ -29,6 +32,7 @@ http = urllib3.PoolManager()
 
 
 def extract_data(url):
+    print(url)
     r = http.request('GET', url, headers=header_data)
     resp = json.loads(r.data)
     results = resp['resultSets'][0]
@@ -39,42 +43,48 @@ def extract_data(url):
     return frame
 
 
-def convert_time_string_to_seconds(row):
-    time_string = row['PCTIMESTRING']
-    period = int(row['PERIOD'])
-    if period > 4:
-        add = 720 * 4 + (period - 4) * (5 * 60)
+def calculate_time_at_period(period):
+    if period > 5:
+        return (720 * 4 + (period - 5) * (5 * 60)) * 10
     else:
-        add = 720 * (period - 1)
-
-    [min, sec] = time_string.split(":")
-
-    min_elapsed = 11 - int(min)
-    sec_elapsed = 60 - int(sec)
-
-    row["TIME"] = (add + (min_elapsed * 60) + sec_elapsed) * 10
-    return row
+        return (720 * (period - 1)) * 10
 
 
-game_id = "0041700404"
+def split_subs(df, tag):
+    subs = df[[tag, 'PERIOD', 'EVENTNUM']]
+    subs['SUB'] = tag
+    subs.columns = ['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']
+    return subs
+
+game_id = "0041700404&"
 frame = extract_data(play_by_play_url(game_id))
 
-periods_and_time = frame[['PERIOD', 'PCTIMESTRING']]
-periods_and_time = periods_and_time.apply(convert_time_string_to_seconds, axis=1)
+substitutionsOnly = frame[frame["EVENTMSGTYPE"] == 8][['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
+substitutionsOnly.columns = ['PERIOD', 'EVENTNUM', 'OUT', 'IN']
 
-periods_and_time = periods_and_time[periods_and_time['PERIOD'] > 1]
+subs_in = split_subs(substitutionsOnly, 'IN')
+subs_out = split_subs(substitutionsOnly, 'OUT')
 
-times = periods_and_time.groupby(by='PERIOD').head(2).groupby(by='PERIOD').tail(1)[['PERIOD', 'TIME']].values
+full_subs = pd.concat([subs_out, subs_in], axis=0).reset_index()[['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']]
+first_event_of_period = full_subs.loc[full_subs.groupby(by=['PERIOD', 'PLAYER_ID'])['EVENTNUM'].idxmin()]
+players_subbed_in_at_each_period = first_event_of_period[first_event_of_period['SUB'] == 'IN'][['PLAYER_ID', 'PERIOD', 'SUB']]
+
+periods = players_subbed_in_at_each_period['PERIOD'].drop_duplicates().values.tolist()
 
 frames = []
-for t in times:
-    period = t[0]
-    time = t[1]
-    lower = time - 9
-    upper = time + 9
-    frame = extract_data(advanced_boxscore_url(game_id, lower, upper))[['PLAYER_ID', 'PLAYER_NAME']]
-    frame['PERIOD'] = period
-    frames.append(frame)
+for period in periods:
 
-players_on_court = pd.concat(frames)
-print(players_on_court)
+    low = calculate_time_at_period(period) + 5
+    high = calculate_time_at_period(period + 1) - 5
+    boxscore = advanced_boxscore_url(game_id, low, high)
+    boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ABBREVIATION']]
+    boxscore_players['PERIOD'] = period
+
+    players_subbed_in_at_period = players_subbed_in_at_each_period[players_subbed_in_at_each_period['PERIOD'] == period]
+
+    joined_players = pd.merge(boxscore_players, players_subbed_in_at_period, on=['PLAYER_ID', 'PERIOD'], how='left')
+    joined_players = joined_players[pd.isnull(joined_players['SUB'])][['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ABBREVIATION', 'PERIOD']]
+    frames.append(joined_players)
+
+out = pd.concat(frames)
+print(out)
